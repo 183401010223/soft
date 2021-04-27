@@ -1,1 +1,186 @@
 
+#include<reg51.h>
+#define uchar unsigned char
+#define uint unsigned int
+xdata uchar duan _at_ 0x8004;	
+xdata uchar w_l  _at_ 0x8002;	
+code uchar LEDTable[] = {			
+	 //0x6f, 0x7f, 0x07, 0x7d, 0x6d, 0x66, 0x4f,0x5b,0x06, 0x3f
+ 0XC0,0XF9,0XA4,0XB0,0X99,0X92,0X82,0XF8,0X80,0X90
+};        	       /*共阳极数码管码表*/
+
+uchar code SEGLOCAL[]={0x01,0x02,0x04,0x08,0x10,0x20};//位
+void delay(uint x);//延时函数
+void display (uchar,uchar,uchar,uchar);//数码管显示函数
+void mkeys();//按键函数
+void traffic();//交通信号灯函数
+uchar num,num1,num2,   /*num1:南北 num2:东西*/	
+value1,value2,                    //南北:绿灯时间,黄灯时间
+value3,value4,                    //东西:绿灯时间,黄灯时间
+count1,count2,flag1,flag2,//南北标记,东西标记
+shi1,ge1,shi2,ge2;
+sbit ledflag1=P3^2;
+sbit ledflag2=P3^3;
+
+int main()
+{
+  TMOD=0x01;//T1模式,定时
+  TH0=(65536-50000)/256;//装入记数初值高八位,12MHZ,定时50ms
+  TL0=(65536-50000)%256;//装入记数初值低八位,256(D)=0100(H)
+  EA=1;//开中断
+  ET0=1;
+  TR0=1;//启动定时器T0
+	
+	EX0=1;
+	PX0=1;
+	IT0=1;
+	
+	EX1=1;
+	PX1=1;
+  IT1=1;
+	
+/*初始状态*/
+  value1=15;//南北绿黄灯默认值
+  value2=5;
+  value3=10;//东西绿黄灯默认值
+  value4=5;
+
+  num1=value1;//南北数码管显示绿灯倒计时
+  num2=value2+value1;//东西红灯时间
+  shi1=num1/10;
+  ge1=num1%10;
+  shi2=num2/10;
+  ge2=num2%10;
+ 
+  P1=0x41;//初始状态:东西红灯20s,南北绿灯15s
+
+  while(1)
+	{
+    if(num==20)//定时器1s
+    {
+      num=0;
+      num1--;
+      num2--;
+      traffic();
+
+      shi1=num1/10;
+      ge1=num1%10;
+ 
+      shi2=num2/10;
+      ge2=num2%10;
+    }
+display(shi1,ge1,shi2,ge2);
+  }
+}
+
+void traffic()//红绿灯主控制程序
+{
+  if(num1==0)
+	{
+    count1++;
+    if(count1==1)
+			{
+        P1=0x42;//东西红灯5s,南北黄灯5s
+        num1=value2;
+      }
+     if(count1==2)
+		  {
+        num1=value3+value4;//东西绿灯10s南北红灯15s
+        P1=0x14;
+      }
+     if(count1==3)
+		  {
+				 P1=0x41;//东西红灯20s,南北绿灯15s
+         num1=value1;
+         count1=0;
+      }
+  }
+  if(num2==0)
+		{
+      count2++;
+      if(count2==1)
+				{
+          P1=0x14;//东西绿灯,南北红灯
+          num2=value3;
+        }
+      if(count2==2)
+				{
+          P1=0x24;//东西黄灯,南北红灯
+          num2=value4;
+        }
+      if(count2==3)
+				{
+					P1=0x41;
+          num2=value1+value2;//东西红灯20,南北绿灯15
+          count2=0;
+        }
+    }
+}
+
+
+void write_address(uchar address)
+{
+w_l=address;
+}
+void write_date(uchar n)
+{
+duan=LEDTable[n];
+}
+void display(uchar shi1,uchar ge1,uchar shi2,uchar ge2)
+{
+write_date(shi1);
+write_address(0x01);
+
+delay(10);
+duan=0xff;//消除影
+write_date(ge1);
+write_address(0x02);
+
+delay(10);
+duan=0xff;	
+write_date(shi2);
+write_address(0x04);
+
+delay(10);
+duan=0xff;	
+	
+write_date(ge2);
+write_address(0x08);
+
+delay(10);
+duan=0xff;	
+}
+
+void delay(uint x)//延时子函数
+{
+  uint i,j;
+  for(i=x;i>0;i--)
+  for(j=125;j>0;j--);
+}
+
+void T0_time()interrupt 1//定时器中断子程序
+{
+	TH0=(65536-50000)/256;
+	TH1=(65536-50000)%256;
+	num++;
+}
+
+void X0() interrupt 0//南北紧急
+{
+  uchar temp=P1;
+	while(~ledflag1){
+	P1=0X41;  
+	PX0=1;
+	}
+	P1=temp;
+}
+
+void X1() interrupt 2
+{
+	 uchar temp=P1;
+	while(~ledflag2){
+	P1=0X14;
+	PX1=1;
+	}
+P1=temp;
+}
